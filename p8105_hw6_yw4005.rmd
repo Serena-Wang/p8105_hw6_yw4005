@@ -1,0 +1,97 @@
+---
+title: "p8105 HW6"
+author: "Yijin Serena Wang"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r, message = FALSE}
+library(tidyverse)
+library(rnoaa)
+library(readr)
+library(ggplot2)
+library(modelr)
+library(broom)
+library(ggridges)
+```
+
+## Problem 1
+
+Download and clean data
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+Create a function to extract r squared from linear model output
+```{r}
+get_r_squared_hat <- function(model) {
+  model %>% 
+    glance() %>%
+    pull(r.squared)
+}
+```
+
+Create a function to extract beta0/intercept from linear model output
+```{r}
+get_beta_0 <- function(model) {
+ model %>%
+    tidy() %>%
+    filter(term == "(Intercept)") %>%
+    pull(estimate)
+    
+}
+```
+
+Create a function to extract beta1/coef for tmin from linear model output
+```{r}
+get_beta_1 <- function(model) {
+ model %>%
+    tidy() %>%
+    filter(term != "(Intercept)") %>%
+    pull(estimate)
+  }
+```
+
+Create 5000 bootstrap samples. For each sample, build a linear model then extract results.
+```{r}
+set.seed(1)
+weather_sim_lm_result <- weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    r_squared_hat = map(models, get_r_squared_hat),
+    beta_0 = map(models, get_beta_0),
+    beta_1 = map(models, get_beta_1)) %>%
+  select(r_squared_hat, beta_0, beta_1) %>%
+  mutate(across(everything(), as.numeric)) %>%
+  mutate(log_beta0_beta1 = log(beta_0 * beta_1))
+```
+
+Plot model results
+```{r}
+weather_sim_lm_result %>%
+  pivot_longer(cols=c("r_squared_hat",
+                      "log_beta0_beta1"), 
+                      names_to = "statistics") %>%
+  ggplot() +
+  stat_density_ridges(
+    aes(x = value, y = statistics),
+    quantile_lines = TRUE, 
+    quantiles = c(0.025, 0.975), 
+    alpha = 0.7) +
+  facet_grid(~statistics, scales = "free_x")
+  
+
+```
+
+Based on the density plot, both statistics seem to follow a normal distribution.
+
