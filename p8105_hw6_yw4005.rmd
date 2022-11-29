@@ -14,6 +14,7 @@ library(modelr)
 library(broom)
 library(ggridges)
 library(janitor)
+library(mgcv)
 ```
 
 ## Problem 1
@@ -102,12 +103,10 @@ Load and clean data. Create a binary indicating if a case is resolved, and filte
 ```{r}
 homicide_data <- read_csv("./Data/homicide-data.csv") %>%
   mutate(city_state = paste0(city, ", ", state),
-         # ?????
          is_resolved = 
            !(disposition %in% 
                c("Closed without arrest", "Open/No arrest"))) %>%
   clean_names() %>%
-  # still has Tulsa ok
   filter(!(city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")),
          victim_race %in% c("White", "Black")) %>%
   mutate(victim_age = as.numeric(victim_age))
@@ -183,5 +182,88 @@ homicide_logistics_result %>%
 ```
 
 Most of the city states have similar odds ratios. Only a few of them have large odds ratios. There is not an obivious pattern between the value of odds ratio and length of its CI. But almost all CIs do not cover 0 so that odds ratio is not equal to 1. 
+
+## Problem 3
+
+```{r}
+birthweight_data <- read_csv("./Data/birthweight.csv") %>%
+  mutate(babysex = as.factor(babysex),
+         frace = as.factor(frace),
+         malform = as.factor(malform),
+         mrace = as.factor(mrace)) %>%
+  clean_names()
+  
+```
+```{r}
+sum(is.na(birthweight_data))
+```
+There is no missing data in this data frame.
+
+```{r}
+linear_fit <- lm(bwt ~ bhead + blength + gaweeks + malform + ppbmi + momage, data = birthweight_data)
+```
+
+```{r}
+linear_fit %>% glance()
+```
+
+```{r}
+linear_fit %>% tidy()
+```
+
+```{r}
+birthweight_data %>% 
+  add_predictions(linear_fit) %>%
+  add_residuals(linear_fit) %>%
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.5)
+  
+```
+Compare my model with two others:
+
+```{r}
+comparison_model_1 <- lm(bwt ~ gaweeks, data = birthweight_data)
+comparison_model_2 <- lm(bwt ~ bhead*blength + bhead*babysex + babysex * blength  + babysex *  bhead*blength, data = birthweight_data)
+```
+
+```{r}
+comparison_model_1 %>% tidy()
+```
+```{r}
+comparison_model_2 %>% tidy()
+```
+```{r}
+cv_df <-
+  crossv_mc(birthweight_data, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+```{r}
+cv_df <- 
+  cv_df %>% 
+  mutate(
+    linear_fit = map(train, ~lm(bwt ~ bhead + blength + gaweeks + malform + ppbmi + momage, data = .x)),
+    comparison_model_1  = map(train, ~lm(bwt ~ gaweeks, data = .x)),
+    comparison_model_2  = map(train, ~lm(bwt ~ bhead*blength + bhead*babysex + babysex * blength  + babysex *  bhead*blength, data = .x))) %>% 
+  mutate(
+    rmse_linear_fit = map2_dbl(linear_fit, test, ~rmse(model = .x, data = .y)),
+    rmse_comparison_model_1   = map2_dbl(comparison_model_1, test, ~rmse(model = .x, data = .y)),
+    rmse_comparison_model_2 = map2_dbl(comparison_model_2, test, ~rmse(model = .x, data = .y)))
+```
+
+```{r}
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + 
+  geom_violin()
+```
 
 
