@@ -199,6 +199,7 @@ sum(is.na(birthweight_data))
 ```
 There is no missing data in this data frame.
 
+My proposed model:
 ```{r}
 linear_fit <- lm(bwt ~ bhead + blength + gaweeks + malform + ppbmi + momage, data = birthweight_data)
 ```
@@ -219,6 +220,9 @@ birthweight_data %>%
   geom_point(alpha = 0.5)
   
 ```
+
+There is not obvious patterns in the residuals.
+
 Compare my model with two others:
 
 ```{r}
@@ -266,4 +270,5 @@ cv_df %>%
   geom_violin()
 ```
 
+My model has the smallest prediction error among these models. 
 
